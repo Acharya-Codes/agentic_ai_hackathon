@@ -1,9 +1,12 @@
 import argparse
 import os
+
 from groq import Groq
+
 import actions
 from port_lister import list_listening_ports
 from reasoner import assess_all
+
 ACTIONABLE = ("block_with_firewall", "stop_service")
 
 
@@ -21,6 +24,12 @@ def handle(finding, assessment, dry_run):
     print(f"[{assessment['risk'].upper()}] Port {port} ({finding['exposure']}) - {name}")
     print(f"  What it is : {assessment['what_it_is']}")
     print(f"  Why        : {assessment['why']}")
+
+    reason = actions.protection_reason(port, name)
+    if reason:
+        print(f"  Safety rule: {reason}, so the agent will not change it.")
+        actions.log_action("skipped_protected", {"port": port, "process": name}, True, dry_run)
+        return
 
     if assessment["action"] == "block_with_firewall":
         print("  Proposed   : block inbound connections to this port (reversible)")
@@ -80,7 +89,7 @@ def main():
         for f in findings
     ]
     print(f"Scanning done: {len(findings)} listening ports. Asking the AI to assess them...")
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
     results = assess_all(client, to_send)
 
     order = {"high": 0, "medium": 1}

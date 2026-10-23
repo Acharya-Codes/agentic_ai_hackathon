@@ -1,0 +1,11 @@
+{"time": "2026-10-23T00:29:04", "action": "block_port", "detail": {"port": 49664}, "ok": true, "dry_run": true}
+{"time": "2026-10-23T00:29:06", "action": "block_port", "detail": {"port": 49664}, "ok": true, "dry_run": true}
+{"time": "2026-10-23T00:29:07", "action": "block_port", "detail": {"port": 49665}, "ok": true, "dry_run": true}
+{"time": "2026-10-23T00:29:07", "action": "block_port", "detail": {"port": 49665}, "ok": true, "dry_run": true}
+{"time": "2026-10-23T00:33:57", "action": "block_port", "detail": {"port": 49664}, "ok": true, "dry_run": false}
+{"time": "2026-10-23T00:33:58", "action": "block_port", "detail": {"port": 49664}, "ok": true, "dry_run": false}
+{"time": "2026-10-23T00:33:59", "action": "block_port", "detail": {"port": 49665}, "ok": true, "dry_run": false}
+{"time": "2026-10-23T00:33:59", "action": "block_port", "detail": {"port": 49665}, "ok": true, "dry_run": false}
+{"time": "2026-10-23T07:36:44", "action": "declined_block", "detail": {"port": 49664}, "ok": true, "dry_run": false}
+{"time": "2026-10-23T07:46:22", "action": "block_port", "detail": {"port": 2323}, "ok": true, "dry_run": false}
+{"time": "2026-10-23T07:46:58", "action": "unblock_port", "detail": {"port": 2323}, "ok": true, "dry_run": false}

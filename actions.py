@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 from datetime import datetime
+
 import psutil
 
 RULE_PREFIX = "PortGuardian-Block-"   # only rules with this name are ever touched
@@ -15,6 +16,15 @@ PROTECTED_PROCESSES = {
     "system", "system idle process", "lsass.exe", "wininit.exe",
     "services.exe", "csrss.exe", "winlogon.exe", "svchost.exe", "explorer.exe",
 }
+
+
+def protection_reason(port, process):
+    """Why the agent must not change this, or None if it may propose a change."""
+    if port in PROTECTED_PORTS:
+        return f"port {port} is used by Windows itself"
+    if (process or "").lower() in PROTECTED_PROCESSES:
+        return f"{process} is a core Windows process"
+    return None
 
 
 def is_admin():
