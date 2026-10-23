@@ -16,3 +16,14 @@ PORT_HINTS = {
 
 def hint_for(port):
     return PORT_HINTS.get(port, "")
+
+GUIDES = {
+    139: "Windows file sharing. Set this network's profile to Private and turn off "
+         "'File and printer sharing' in Advanced sharing settings.",
+    445: "Windows file sharing. Set this network's profile to Private and turn off "
+         "'File and printer sharing' in Advanced sharing settings.",
+}
+
+
+def guide_for(port):
+    return GUIDES.get(port, "")
