@@ -6,9 +6,11 @@ from groq import Groq
 from chatbot import NETWORK_SUGGESTIONS, network_context, render_chat
 from network_assess import assess_devices
 from network_scan import PROBE_PORTS, local_networks, scan_network
+from session_persistence import persist_session_state, restore_session_state
 
-st.set_page_config(page_title="GuberoAI: network devices", page_icon="🛡️", layout="wide")
-st.title("🌐 Network devices")
+st.set_page_config(page_title="Network Devices", page_icon="🛡️", layout="wide")
+restore_session_state()
+st.title("🌐 Network Devices")
 st.caption("Looks for risky services on other devices (cameras, routers, printers...) and "
            "tells you how to fix them. It never changes another device.")
 
@@ -21,37 +23,45 @@ st.warning(
 nets = local_networks()
 if not nets:
     st.error("No private network found. Connect to your home Wi-Fi or hotspot first.")
-    st.stop()
+    if st.session_state.get("net_devices") is None:
+        st.stop()
+    st.info("Showing the results from your previous scan. Reconnect to a private network "
+            "to start another scan.")
+else:
+    labels = [f"{name}: your address {ip}, scanning {net}" for name, ip, net in nets]
+    pick = st.selectbox("Network to scan", range(len(nets)), format_func=lambda i: labels[i])
+    _, my_ip, net = nets[pick]
 
-labels = [f"{name}: your address {ip}, scanning {net}" for name, ip, net in nets]
-pick = st.selectbox("Network to scan", range(len(nets)), format_func=lambda i: labels[i])
-_, my_ip, net = nets[pick]
+    st.write(f"The scan tries {len(PROBE_PORTS)} common risky ports on each address in "
+             f"**{net}**. It only checks whether a port accepts a connection.")
+    owns = st.checkbox("I own this network, or I have permission to test every device on it.")
+    typed = st.text_input(f"To confirm, type the network range exactly as shown ({net}):")
+    ready = owns and typed.strip() == str(net)
+    key_ok = "GROQ_API_KEY" in os.environ
+    if not key_ok:
+        st.info("GROQ_API_KEY is not set in this terminal, so basic rule-based advice will be used.")
 
-st.write(f"The scan tries {len(PROBE_PORTS)} common risky ports on each address in "
-         f"**{net}**. It only checks whether a port accepts a connection.")
-owns = st.checkbox("I own this network, or I have permission to test every device on it.")
-typed = st.text_input(f"To confirm, type the network range exactly as shown ({net}):")
-ready = owns and typed.strip() == str(net)
-key_ok = "GROQ_API_KEY" in os.environ
-if not key_ok:
-    st.info("GROQ_API_KEY is not set in this terminal, so basic rule-based advice will be used.")
-
-if st.button("🔍 Scan network", type="primary", disabled=not ready):
-    bar = st.progress(0.0, text="Looking for risky services...")
-    devices = scan_network(net, my_ip, lambda x: bar.progress(x, text="Looking for risky services..."))
-    bar.empty()
-    results = {}
-    if devices:
-        if key_ok:
-            with st.spinner("Asking the AI to explain what was found..."):
-                client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
-                results = assess_devices(client, devices)
-        else:
-            from network_assess import fallback_assessment
-            results = {d["id"]: fallback_assessment(d) for d in devices}
-    st.session_state.net_devices = devices
-    st.session_state.net_results = results
-    st.session_state.net_scanned = str(net)
+    if st.button("🔍 Scan network", type="primary", disabled=not ready):
+        bar = st.progress(0.0, text="Looking for risky services...")
+        devices = scan_network(
+            net,
+            my_ip,
+            lambda x: bar.progress(x, text="Looking for risky services..."),
+        )
+        bar.empty()
+        results = {}
+        if devices:
+            if key_ok:
+                with st.spinner("Asking the AI to explain what was found..."):
+                    client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
+                    results = assess_devices(client, devices)
+            else:
+                from network_assess import fallback_assessment
+                results = {d["id"]: fallback_assessment(d) for d in devices}
+        st.session_state.net_devices = devices
+        st.session_state.net_results = results
+        st.session_state.net_scanned = str(net)
+        persist_session_state()
 
 devices = st.session_state.get("net_devices")
 if devices is None:
@@ -91,3 +101,4 @@ st.header("💬 Ask GuberoAI")
 st.caption("The assistant only explains the results above. It cannot change any device.")
 render_chat(network_context(devices, results, st.session_state.net_scanned),
             key="network", suggestions=NETWORK_SUGGESTIONS)
+persist_session_state()

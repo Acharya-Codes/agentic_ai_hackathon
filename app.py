@@ -10,10 +10,16 @@ from port_lister import list_listening_ports
 from reasoner import assess_all
 from score import compute_score, grade
 from chatbot import HOST_SUGGESTIONS, host_context, render_chat
+from session_persistence import (
+    clear_all_reports,
+    persist_session_state,
+    restore_session_state,
+)
 
 ACTIONABLE = ("block_with_firewall", "stop_service")
 
-st.set_page_config(page_title="GuberoAI", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="App", page_icon="🛡️", layout="wide")
+restore_session_state()
 
 # ---------- session state (survives button clicks) ----------
 for key, default in [("findings", None), ("results", {}), ("before", None),
@@ -38,6 +44,26 @@ def scan_and_assess():
     st.session_state.applied = {}
     st.session_state.declined = set()
     st.session_state.before = compute_score(findings, results, set())
+    persist_session_state()
+
+
+def render_footer():
+    st.markdown("---")
+    st.markdown("[View this project on GitHub](https://github.com/Acharya-Codes/agentic_ai_hackathon)")
+
+
+@st.dialog("Clear reports and return home?")
+def confirm_clear_reports():
+    st.warning(
+        "This will clear the current PC and network scan reports, chat histories, "
+        "and approval status. Do you want to continue?"
+    )
+    yes, no = st.columns(2)
+    if yes.button("Yes, clear reports", type="primary", key="clear_reports_yes"):
+        clear_all_reports()
+        st.rerun()
+    if no.button("No, keep reports", key="clear_reports_no"):
+        st.rerun()
 
 
 # ---------- header and sidebar ----------
@@ -45,9 +71,15 @@ st.title("🛡️ GuberoAI")
 st.caption("An AI agent that finds risky open ports on this PC, explains them in plain "
            "language, and fixes them only with your approval.")
 
+if (st.session_state.get("findings") is not None
+        or st.session_state.get("net_devices") is not None):
+    if st.button("⬅️ Back to home"):
+        confirm_clear_reports()
+
 admin = actions.is_admin()
 st.sidebar.header("Controls")
-dry = st.sidebar.checkbox("Dry run (preview only, change nothing)", value=not admin)
+dry = st.sidebar.checkbox("Dry run (preview only, change nothing)", value=not admin,
+                          key="dry_run")
 st.sidebar.write(f"Running as Administrator: **{'yes' if admin else 'no'}**")
 if not admin and not dry:
     st.sidebar.warning("Real changes will fail without Administrator rights.")
@@ -61,6 +93,7 @@ if st.sidebar.button("🔍 Scan & assess", type="primary"):
 
 if st.session_state.findings is None:
     st.info("Click **Scan & assess** in the sidebar to begin.")
+    render_footer()
     st.stop()
 
 findings = st.session_state.findings
@@ -123,6 +156,7 @@ def render_card(f, a):
                     ok, msg = actions.unblock_port(port)
                     if ok:
                         applied.pop(port, None)
+                        persist_session_state()
                         st.rerun()
                     st.error(msg)
             return
@@ -141,11 +175,13 @@ def render_card(f, a):
                                 f"{actions.rule_exists(port)}. Other devices can no longer "
                                 "reach this port.")
                     applied[port] = {"kind": "block", "real": not dry, "message": text}
+                    persist_session_state()
                     st.rerun()
                 st.error(f"Failed: {msg}")
             if col2.button("❌ Decline", key=f"no{f['id']}"):
                 actions.log_action("declined_block", {"port": port}, True, dry)
                 st.session_state.declined.add(port)
+                persist_session_state()
                 st.rerun()
 
         elif a["action"] == "stop_service":
@@ -162,11 +198,13 @@ def render_card(f, a):
                         text = (f"Stopped {name}. Still listening: "
                                 f"{still_listening(port, pid)}.")
                     applied[port] = {"kind": "stop", "real": not dry, "message": text}
+                    persist_session_state()
                     st.rerun()
                 st.error(f"Failed: {msg}")
             if col2.button("❌ Decline", key=f"no{f['id']}"):
                 actions.log_action("declined_stop", {"pid": pid, "name": name}, True, dry)
                 st.session_state.declined.add(port)
+                persist_session_state()
                 st.rerun()
 
 
@@ -228,3 +266,5 @@ st.caption("Not sure what something means? Ask. The assistant only explains: it 
            "anything. Use the buttons on the cards to approve or decline changes.")
 render_chat(host_context(findings, results, applied, before, now, dry),
             key="host", suggestions=HOST_SUGGESTIONS)
+persist_session_state()
+render_footer()

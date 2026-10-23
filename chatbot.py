@@ -147,4 +147,6 @@ def render_chat(context, key, suggestions):
         with st.spinner("Thinking..."):
             reply = answer(history, context, language)
         history.append({"role": "assistant", "content": reply})
+        from session_persistence import persist_session_state
+        persist_session_state()
         st.rerun()
