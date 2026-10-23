@@ -13,7 +13,7 @@ from chatbot import HOST_SUGGESTIONS, host_context, render_chat
 
 ACTIONABLE = ("block_with_firewall", "stop_service")
 
-st.set_page_config(page_title="Port Guardian", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="GuberoAI", page_icon="🛡️", layout="wide")
 
 # ---------- session state (survives button clicks) ----------
 for key, default in [("findings", None), ("results", {}), ("before", None),
@@ -40,7 +40,7 @@ def scan_and_assess():
 
 
 # ---------- header and sidebar ----------
-st.title("🛡️ Port Guardian")
+st.title("🛡️ GuberoAI")
 st.caption("An AI agent that finds risky open ports on this PC, explains them in plain "
            "language, and fixes them only with your approval.")
 
@@ -211,7 +211,7 @@ with st.expander("Action log"):
         st.write("No actions yet.")
 
 # ---------- assistant ----------
-st.header("💬 Ask Port Guardian")
+st.header("💬 Ask GuberoAI")
 st.caption("Not sure what something means? Ask. The assistant only explains: it cannot change "
            "anything. Use the buttons on the cards to approve or decline changes.")
 render_chat(host_context(findings, results, applied, before, now, dry),

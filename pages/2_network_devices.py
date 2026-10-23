@@ -7,7 +7,7 @@ from chatbot import NETWORK_SUGGESTIONS, network_context, render_chat
 from network_assess import assess_devices
 from network_scan import PROBE_PORTS, local_networks, scan_network
 
-st.set_page_config(page_title="Port Guardian: network devices", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="GuberoAI: network devices", page_icon="🛡️", layout="wide")
 st.title("🌐 Network devices")
 st.caption("Looks for risky services on other devices (cameras, routers, printers...) and "
            "tells you how to fix them. It never changes another device.")
@@ -87,7 +87,7 @@ for d in devices:
         st.caption("Guidance written by AI" if a.get("source") != "rule"
                    else "Basic rule-based guidance (AI unavailable)")
 
-st.header("💬 Ask Port Guardian")
+st.header("💬 Ask GuberoAI")
 st.caption("The assistant only explains the results above. It cannot change any device.")
 render_chat(network_context(devices, results, st.session_state.net_scanned),
             key="network", suggestions=NETWORK_SUGGESTIONS)
