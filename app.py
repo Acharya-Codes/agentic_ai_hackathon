@@ -12,7 +12,52 @@ from score import compute_score, grade
 
 ACTIONABLE = ("block_with_firewall", "stop_service")
 
-st.set_page_config(page_title="Port Guardian", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="GuberoAI", page_icon="🛡️", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    [data-testid="stAppViewContainer"] {
+        background: #064643;
+    }
+    [data-testid="stHeader"] { background: rgba(3, 47, 45, 0.72); }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #064643 0%, #033633 100%);
+        border-right: 1px solid rgba(167, 243, 208, 0.2);
+    }
+    [data-testid="stSidebarNav"] { display: none; }
+    div.block-container { max-width: 1180px; padding-top: 2rem; padding-bottom: 3rem; }
+    .gubero-hero {
+        padding: 1.5rem 1.7rem;
+        margin-bottom: 1.25rem;
+        border: 1px solid rgba(167, 243, 208, 0.28);
+        border-radius: 20px;
+        background: linear-gradient(115deg, rgba(11, 92, 85, 0.96), rgba(3, 54, 51, 0.96));
+    }
+    .gubero-kicker {
+        margin: 0 0 0.4rem;
+        color: #a7f3d0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+    }
+    .gubero-hero p { margin: 0; color: #ecfdf5; font-size: 1rem; }
+    [data-testid="stMetric"] {
+        padding: 1rem;
+        border: 1px solid rgba(167, 243, 208, 0.22);
+        border-radius: 16px;
+        background: rgba(3, 54, 51, 0.72);
+    }
+    button[kind="primary"] {
+        border: 1px solid #fcd34d;
+        background: linear-gradient(100deg, #fbbf24, #f59e0b);
+        color: #12312d;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------- session state (survives button clicks) ----------
 for key, default in [("findings", None), ("results", {}), ("before", None),
@@ -39,12 +84,22 @@ def scan_and_assess():
 
 
 # ---------- header and sidebar ----------
-st.title("🛡️ Port Guardian")
-st.caption("An AI agent that finds risky open ports on this PC, explains them in plain "
-           "language, and fixes them only with your approval.")
+st.markdown(
+    '<div class="gubero-hero"><div class="gubero-kicker">GuberoAI · Device protection</div>'
+    "<p>Understand what is exposed on this PC, review clear recommendations, "
+    "and approve any action before it happens.</p></div>",
+    unsafe_allow_html=True,
+)
+st.title("🛡️ GuberoAI")
+st.caption("Port security dashboard")
 
 admin = actions.is_admin()
-st.sidebar.header("Controls")
+st.sidebar.markdown("### 🛡️ GuberoAI")
+st.sidebar.caption("Security workspace")
+st.sidebar.page_link("app.py", label="App", icon="🏠")
+st.sidebar.page_link("pages/2_network_devices.py", label="Network Devices", icon="🌐")
+st.sidebar.divider()
+st.sidebar.header("Scan controls")
 dry = st.sidebar.checkbox("Dry run (preview only, change nothing)", value=not admin)
 st.sidebar.write(f"Running as Administrator: **{'yes' if admin else 'no'}**")
 if not admin and not dry:
@@ -59,6 +114,13 @@ if st.sidebar.button("🔍 Scan & assess", type="primary", disabled=not key_ok):
 
 if st.session_state.findings is None:
     st.info("Click **Scan & assess** in the sidebar to begin.")
+    st.markdown(
+        '<div style="text-align:center; padding:2rem 0 0.5rem; color:#94a3b8;">'
+        '<a href="https://github.com/Acharya-Codes/agentic_ai_hackathon" '
+        'target="_blank" rel="noopener noreferrer" style="color:#fcd34d; text-decoration:none;">'
+        '↗ View GuberoAI on GitHub</a></div>',
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 findings = st.session_state.findings
@@ -72,7 +134,7 @@ before = st.session_state.before
 m1, m2, m3 = st.columns(3)
 m1.metric("Security score", f"{now}/100", delta=(now - before) if now != before else None)
 m2.metric("Rating", grade(now))
-m3.metric("Ports scanned", len(findings))
+m3.metric("Listening ports found", len(findings))
 if dry:
     st.warning("Dry run is ON: approvals only preview the change. Untick it in the sidebar "
                "for real changes.")
@@ -208,3 +270,11 @@ with st.expander("Action log"):
         )
     else:
         st.write("No actions yet.")
+
+st.markdown(
+    '<div style="text-align:center; padding:2rem 0 0.5rem; color:#94a3b8;">'
+    '<a href="https://github.com/Acharya-Codes/agentic_ai_hackathon" '
+    'target="_blank" rel="noopener noreferrer" style="color:#fcd34d; text-decoration:none;">'
+    '↗ View GuberoAI on GitHub</a></div>',
+    unsafe_allow_html=True,
+)
