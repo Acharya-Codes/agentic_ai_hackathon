@@ -1,6 +1,8 @@
 import json
 import os
 import time
+from collections import OrderedDict
+from hashlib import sha256
 
 from groq import Groq, RateLimitError
 
@@ -15,6 +17,16 @@ ACTIONS = ["ignore", "investigate", "block_with_firewall", "stop_service"]
 BATCH_SIZE = 8          # small batches are more reliable
 MAX_ROUNDS = 3          # how many times we re-ask for items still missing
 PAUSE_BETWEEN_CALLS = 2 # seconds, to stay under the free-tier rate limit
+CACHE_SIZE = 512
+FALLBACK_HIGH_RISK_PORTS = {
+    21: "FTP",
+    23: "Telnet",
+    69: "TFTP",
+    2323: "Telnet",
+    5555: "Android Debug Bridge",
+    7547: "TR-069 router management",
+}
+_ASSESSMENT_CACHE = OrderedDict()
 
 # The shape we force the LLM's answer into, so our code can rely on it.
 SCHEMA = {
@@ -144,45 +156,138 @@ def triage_local(to_send):
     return done
 
 
+def fallback_assessment(finding):
+    """Return a conservative rule-based assessment when AI is unavailable."""
+    port = finding["port"]
+    hint = hint_for(port)
+    if port in FALLBACK_HIGH_RISK_PORTS and finding["exposure"] == "NETWORK-REACHABLE":
+        service = FALLBACK_HIGH_RISK_PORTS[port]
+        return {
+            "id": finding["id"],
+            "what_it_is": service,
+            "risk": "high",
+            "why": (f"{service} is exposed to the network and is considered an insecure "
+                    "or sensitive service."),
+            "action": "block_with_firewall",
+            "source": "rule",
+        }
+    if port == 57621:
+        return {
+            "id": finding["id"],
+            "what_it_is": "Spotify local network discovery",
+            "risk": "low",
+            "why": "This port is commonly used by Spotify for local network discovery.",
+            "action": "ignore",
+            "source": "rule",
+        }
+    if hint:
+        what_it_is = hint.split(":", 1)[0]
+        why = (f"{hint}. Review whether this service needs to be reachable from your "
+               "network; no disruptive change is recommended automatically.")
+    else:
+        what_it_is = f"Unrecognized service ({finding['process']})"
+        why = ("The service is reachable from the network, but its purpose is not known. "
+               "Check which application uses it before making changes.")
+    return {
+        "id": finding["id"],
+        "what_it_is": what_it_is,
+        "risk": "medium",
+        "why": why,
+        "action": "investigate",
+        "source": "rule",
+    }
+
+
+def _cache_key(finding):
+    relevant = {
+        "model": MODEL,
+        "port": finding["port"],
+        "address": finding["address"],
+        "exposure": finding["exposure"],
+        "process": finding["process"],
+        "path": finding.get("path") or "",
+    }
+    serialized = json.dumps(relevant, sort_keys=True)
+    return sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _remember_assessment(finding, assessment):
+    key = _cache_key(finding)
+    cached = {k: v for k, v in assessment.items() if k != "id"}
+    _ASSESSMENT_CACHE[key] = cached
+    _ASSESSMENT_CACHE.move_to_end(key)
+    while len(_ASSESSMENT_CACHE) > CACHE_SIZE:
+        _ASSESSMENT_CACHE.popitem(last=False)
+
+
 def assess_batch(client, batch, round_no):
-    """Assess one batch. If it fails, split it in half and try each half."""
+    """Assess a batch, splitting ordinary failures and surfacing rate limits."""
     try:
         data = ask_llm(client, batch)
         valid = validate(data, batch)
         print(f"Round {round_no}: sent {len(batch)}, LLM returned "
               f"{len(data.get('assessments', []))}, {len(valid)} valid")
-        return valid
-    except RateLimitError as err:
-        wait = retry_after_seconds(err)
-        print(f"Rate limit reached. Waiting {wait:.0f}s, then retrying what is left...")
-        time.sleep(wait)
-        return {}
+        return valid, False
+    except RateLimitError:
+        print("Rate limit reached. Using rule-based assessments for the remaining ports.")
+        return {}, True
     except Exception as err:
         if len(batch) == 1:
             print(f"Could not assess port {batch[0]['port']} ({batch[0]['process']}): "
                   f"{str(err)[:80]}")
-            return {}
+            return {}, False
         mid = len(batch) // 2
         print(f"Batch of {len(batch)} failed, splitting it in two...")
-        results = assess_batch(client, batch[:mid], round_no)
+        results, rate_limited = assess_batch(client, batch[:mid], round_no)
+        if rate_limited:
+            return results, True
         time.sleep(PAUSE_BETWEEN_CALLS)
-        results.update(assess_batch(client, batch[mid:], round_no))
-        return results
+        remaining, rate_limited = assess_batch(client, batch[mid:], round_no)
+        results.update(remaining)
+        return results, rate_limited
 
 
 def assess_all(client, to_send):
-    """Assess every finding: rules for local-only ports, the AI for the rest."""
+    """Assess findings using cached AI results, live AI, then conservative rules."""
     results = triage_local(to_send)
-    print(f"{len(results)} local-only ports handled by rules; "
-          f"{len(to_send) - len(results)} sent to the AI")
+    local_rule_count = len(results)
+    cache_hits = 0
+    for finding in to_send:
+        if finding["id"] in results:
+            continue
+        cached = _ASSESSMENT_CACHE.get(_cache_key(finding))
+        if cached is not None:
+            results[finding["id"]] = {
+                "id": finding["id"],
+                **cached,
+                "source": "cache",
+            }
+            _ASSESSMENT_CACHE.move_to_end(_cache_key(finding))
+            cache_hits += 1
+    print(f"{local_rule_count} local-only ports handled by rules; {cache_hits} cached; "
+          f"{len(to_send) - len(results)} need assessment")
+
+    rate_limited = False
     for round_no in range(1, MAX_ROUNDS + 1):
         pending = [f for f in to_send if f["id"] not in results]
-        if not pending:
+        if not pending or client is None:
             break
         for start in range(0, len(pending), BATCH_SIZE):
             batch = pending[start:start + BATCH_SIZE]
-            results.update(assess_batch(client, batch, round_no))
+            assessed, rate_limited = assess_batch(client, batch, round_no)
+            results.update(assessed)
+            by_id = {f["id"]: f for f in batch}
+            for item_id, assessment in assessed.items():
+                _remember_assessment(by_id[item_id], assessment)
+            if rate_limited:
+                break
             time.sleep(PAUSE_BETWEEN_CALLS)
+        if rate_limited:
+            break
+
+    for finding in to_send:
+        if finding["id"] not in results:
+            results[finding["id"]] = fallback_assessment(finding)
     return results
 
 

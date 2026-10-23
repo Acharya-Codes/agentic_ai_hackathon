@@ -30,7 +30,8 @@ def scan_and_assess():
         {k: f[k] for k in ("id", "port", "address", "exposure", "process", "path")}
         for f in findings
     ]
-    client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
+    client = (Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
+              if "GROQ_API_KEY" in os.environ else None)
     results = assess_all(client, to_send)
     st.session_state.findings = findings
     st.session_state.results = results
@@ -52,10 +53,10 @@ if not admin and not dry:
     st.sidebar.warning("Real changes will fail without Administrator rights.")
 key_ok = "GROQ_API_KEY" in os.environ
 if not key_ok:
-    st.sidebar.error("GROQ_API_KEY is not set in this terminal.")
+    st.sidebar.info("GROQ_API_KEY is not set; the scan will use rule-based assessments.")
 
-if st.sidebar.button("🔍 Scan & assess", type="primary", disabled=not key_ok):
-    with st.spinner("Scanning this PC and asking the AI to assess each port..."):
+if st.sidebar.button("🔍 Scan & assess", type="primary"):
+    with st.spinner("Scanning this PC and assessing each port..."):
         scan_and_assess()
 
 if st.session_state.findings is None:
@@ -65,6 +66,14 @@ if st.session_state.findings is None:
 findings = st.session_state.findings
 results = st.session_state.results
 applied = st.session_state.applied
+rule_fallbacks = sum(
+    1 for f in findings
+    if f["exposure"] == "NETWORK-REACHABLE"
+    and results.get(f["id"], {}).get("source") == "rule"
+)
+if rule_fallbacks:
+    st.info(f"Rule-based fallback assessments were used for {rule_fallbacks} "
+            "network-reachable port(s) because AI assessment was unavailable or rate-limited.")
 
 # ---------- score ----------
 mitigated = {port for port, info in applied.items() if info["real"]}
@@ -193,6 +202,9 @@ with st.expander("All scanned ports"):
             "Exposure": f["exposure"],
             "Risk": a["risk"] if a else "not assessed",
             "AI suggestion": a["action"] if a else "",
+            "Assessment": ("Rule-based" if a and a.get("source") == "rule"
+                           else "Cached AI" if a and a.get("source") == "cache"
+                           else "AI" if a else "not assessed"),
             "Fixed": "yes" if f["port"] in mitigated else "",
         })
     st.dataframe(rows, hide_index=True)
