@@ -27,6 +27,23 @@ NETWORK_SUGGESTIONS = [
     "Which device is most urgent?",
     "How do I turn off Telnet on a device?",
 ]
+CHAT_LANGUAGES = (
+    "English",
+    "Hindi",
+    "Bengali",
+    "Tamil",
+    "Telugu",
+    "Urdu",
+    "Spanish",
+    "French",
+    "German",
+    "Italian",
+    "Portuguese",
+    "Arabic",
+    "Chinese (Simplified)",
+    "Japanese",
+    "Korean",
+)
 
 
 def host_context(findings, results, applied, score_before, score_now, dry_run):
@@ -65,7 +82,7 @@ def network_context(devices, results, scanned):
     return "\n".join(lines[:30])
 
 
-def answer(history, context):
+def answer(history, context, language="English"):
     """Ask the LLM, with the scan summary as grounding. Returns plain text."""
     if "GROQ_API_KEY" not in os.environ:
         return "I need GROQ_API_KEY to be set in this terminal before I can answer."
@@ -73,8 +90,16 @@ def answer(history, context):
     from reasoner import MODEL, retry_after_seconds
 
     client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
-    messages = [{"role": "system",
-                 "content": SYSTEM_PROMPT + "\n\nSCAN RESULTS:\n" + context}] + history[-8:]
+    messages = [{
+        "role": "system",
+        "content": (
+            SYSTEM_PROMPT
+            + "\n\nSCAN RESULTS:\n"
+            + context
+            + f"\n\nRespond in {language}. Translate your explanation into that language, "
+              "while keeping IP addresses, port numbers, process names, and commands unchanged."
+        ),
+    }] + history[-8:]
     try:
         resp = client.chat.completions.create(
             model=MODEL,
@@ -100,6 +125,12 @@ def render_chat(context, key, suggestions):
         st.session_state[state_key] = []
     history = st.session_state[state_key]
 
+    language = st.selectbox(
+        "Chat response language",
+        CHAT_LANGUAGES,
+        key=f"{state_key}_language",
+    )
+
     for m in history:
         with st.chat_message(m["role"]):
             st.write(m["content"])
@@ -114,6 +145,6 @@ def render_chat(context, key, suggestions):
     if question:
         history.append({"role": "user", "content": question})
         with st.spinner("Thinking..."):
-            reply = answer(history, context)
+            reply = answer(history, context, language)
         history.append({"role": "assistant", "content": reply})
         st.rerun()
