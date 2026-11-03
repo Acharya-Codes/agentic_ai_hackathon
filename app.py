@@ -14,6 +14,7 @@ import streamlit as st
 from groq import Groq
 
 import actions
+import auth
 import theme
 from chatbot import HOST_SUGGESTIONS, host_context, render_chat
 from port_knowledge import guide_for, hint_for
@@ -25,6 +26,7 @@ ACTIONABLE = ("block_with_firewall", "stop_service")
 
 st.set_page_config(page_title="GuberoAI", page_icon="🛡️", layout="wide")
 theme.inject()
+auth.require_login()   # nothing below runs until you are signed in
 
 # ---------- session state (survives button clicks) ----------
 for key, default in [("findings", None), ("results", {}), ("before", None),
@@ -74,18 +76,27 @@ with st.sidebar:
             "- Log in to, guess passwords for, or attack other devices\n"
             "- Hide what it did: every action is logged, and blocks can be undone"
         )
+    auth.logout_button()
 
-# ---------- hero ----------
-st.markdown(
-    theme.hero(
-        "Know what's exposed. Fix it with your approval.",
-        "GuberoAI scans this PC, explains each risk in plain language, and changes "
-        "nothing without your say-so.",
-        [("Administrator" if admin else "Not administrator", "ok" if admin else "warn"),
-         ("Dry run" if dry else "Live changes", "warn" if dry else "ok")],
-    ),
-    unsafe_allow_html=True,
-)
+# ---------- hero: headline on the left, live port radar on the right ----------
+_f = st.session_state.findings or []
+_mit = {p for p, info in st.session_state.applied.items() if info["real"]}
+hero_left, hero_right = st.columns([1.35, 1])
+with hero_left:
+    st.markdown(
+        theme.hero(
+            "Know what's exposed. Fix it with your approval.",
+            "GuberoAI scans this PC, explains each risk in plain language, and changes "
+            "nothing without your say-so.",
+            [("Administrator" if admin else "Not administrator", "ok" if admin else "warn"),
+             ("Dry run" if dry else "Live changes", "warn" if dry else "ok")],
+            accent="exposed",
+        ),
+        unsafe_allow_html=True,
+    )
+with hero_right:
+    st.markdown(theme.radar_from_findings(_f, st.session_state.results, _mit),
+                unsafe_allow_html=True)
 
 if st.session_state.findings is None:
     st.markdown(theme.timeline(["current", "todo", "todo", "todo", "todo"]), unsafe_allow_html=True)
@@ -138,9 +149,9 @@ with right:
     c1, c2, c3 = st.columns(3)
     c1.markdown(theme.stat("Ports scanned", len(findings), f"{n_net} reachable from the network"),
                 unsafe_allow_html=True)
-    c2.markdown(theme.stat("Need your decision", len(visible), "approve or decline each"),
-                unsafe_allow_html=True)
-    c3.markdown(theme.stat("Fixed", len(mitigated), "blocked or stopped"),
+    c2.markdown(theme.stat("Need your decision", len(visible), "approve or decline each",
+                           "warn" if visible else "ok"), unsafe_allow_html=True)
+    c3.markdown(theme.stat("Fixed", len(mitigated), "blocked or stopped", "ok"),
                 unsafe_allow_html=True)
 if dry:
     st.markdown(theme.notice("Dry run is on: approvals only preview the change. "

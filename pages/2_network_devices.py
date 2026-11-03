@@ -5,6 +5,7 @@ import os
 import streamlit as st
 from groq import Groq
 
+import auth
 import theme
 from chatbot import NETWORK_SUGGESTIONS, network_context, render_chat
 from network_assess import assess_devices, fallback_assessment
@@ -12,16 +13,26 @@ from network_scan import PROBE_PORTS, local_networks, scan_network
 
 st.set_page_config(page_title="GuberoAI: Network devices", page_icon="🛡️", layout="wide")
 theme.inject()
+auth.require_login()   # nothing below runs until you are signed in
+with st.sidebar:
+    auth.logout_button()
 
-st.markdown(
-    theme.hero(
-        "Check the devices around you.",
-        "GuberoAI looks for risky services on other devices (cameras, routers, printers) "
-        "and tells you how to fix them. It never changes another device.",
-        [("Read-only", "ok"), ("Your network only", "info")],
-    ),
-    unsafe_allow_html=True,
-)
+_devs = st.session_state.get("net_devices") or []
+_res = st.session_state.get("net_results") or {}
+hero_left, hero_right = st.columns([1.35, 1])
+with hero_left:
+    st.markdown(
+        theme.hero(
+            "Check the devices around you.",
+            "GuberoAI looks for risky services on other devices (cameras, routers, printers) "
+            "and tells you how to fix them. It never changes another device.",
+            [("Read-only", "ok"), ("Your network only", "info")],
+            accent="devices",
+        ),
+        unsafe_allow_html=True,
+    )
+with hero_right:
+    st.markdown(theme.radar_from_devices(_devs, _res), unsafe_allow_html=True)
 st.markdown(
     theme.notice("Only scan a network you own (your home Wi-Fi or your phone's hotspot) or have "
                  "permission to test. Do NOT use this on hostel, college, office or public Wi-Fi: "
